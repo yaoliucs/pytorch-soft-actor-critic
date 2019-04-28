@@ -55,7 +55,7 @@ parser.add_argument('--discrete_action', action="store_true",
 args = parser.parse_args()
 
 # python main.py --env-name CartPole-v0 --discrete_action --policy "Softmax" --automatic_entropy_tuning True --num_steps 15000 --batch_size 500 --hidden_size 32 --lr 0.001
-# python main.py --env-name CartPole-v0 --discrete_action --policy "Softmax" --automatic_entropy_tuning True --num_steps 120000 --batch_size 5000 --hidden_size 32 --lr 0.001 --start_steps 100000 --end_steps 100000 --replay_size 100000
+# python main.py --env-name CartPole-v0 --discrete_action --policy "Softmax" --automatic_entropy_tuning True --num_steps 110000 --batch_size 5000 --hidden_size 32 --lr 0.001 --start_steps 100000 --end_steps 100000 --replay_size 100000
 
 for k, v in vars(args).items():
     print(' ' * 26 + k + ': ' + str(v))
