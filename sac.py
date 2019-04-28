@@ -1,9 +1,10 @@
 import os
 import torch
 import torch.nn.functional as F
+from gym.spaces import Box, Discrete
 from torch.optim import Adam
 from utils import soft_update, hard_update
-from model import GaussianPolicy, QNetwork, DeterministicPolicy
+from model import GaussianPolicy, QNetwork, QNetworkDA, DeterministicPolicy, SoftmaxPolicy
 
 
 class SAC(object):
@@ -17,12 +18,18 @@ class SAC(object):
         self.target_update_interval = args.target_update_interval
         self.automatic_entropy_tuning = args.automatic_entropy_tuning
 
-        self.device = torch.device("cuda" if args.cuda else "cpu") 
+        self.device = torch.device("cuda" if args.cuda else "cpu")
 
-        self.critic = QNetwork(num_inputs, action_space.shape[0], args.hidden_size).to(device=self.device)
+        self.discrete_action = args.discrete_action
+
+        if self.discrete_action:
+            self.critic = QNetworkDA(num_inputs, action_space.n, args.hidden_size).to(device=self.device)
+            self.critic_target = QNetworkDA(num_inputs, action_space.n, args.hidden_size).to(self.device)
+        else:
+            self.critic = QNetwork(num_inputs, action_space.shape[0], args.hidden_size).to(device=self.device)
+            self.critic_target = QNetwork(num_inputs, action_space.shape[0], args.hidden_size).to(self.device)
+
         self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)
-
-        self.critic_target = QNetwork(num_inputs, action_space.shape[0], args.hidden_size).to(self.device)
         hard_update(self.critic_target, self.critic)
 
         if self.policy_type == "Gaussian":
@@ -32,10 +39,16 @@ class SAC(object):
                 self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
                 self.alpha_optim = Adam([self.log_alpha], lr=args.lr)
 
-
             self.policy = GaussianPolicy(num_inputs, action_space.shape[0], args.hidden_size).to(self.device)
             self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
+        elif self.policy_type == "Softmax":
+            if self.automatic_entropy_tuning == True:
+                self.target_entropy = -torch.prod(torch.Tensor(action_space.n).to(self.device)).item()
+                self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
+                self.alpha_optim = Adam([self.log_alpha], lr=args.lr)
 
+            self.policy = SoftmaxPolicy(num_inputs, action_space.n, args.hidden_size).to(self.device)
+            self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
         else:
             self.alpha = 0
             self.automatic_entropy_tuning = False
@@ -51,17 +64,19 @@ class SAC(object):
         else:
             _, _, action = self.policy.sample(state)
         action = action.detach().cpu().numpy()
+        if self.discrete_action:
+            action = action[0]
         return action[0]
 
 
-
     def update_parameters(self, memory, batch_size, updates):
+        ActionTensor = torch.LongTensor if self.discrete_action else torch.FloatTensor
         # Sample a batch from memory
         state_batch, action_batch, reward_batch, next_state_batch, mask_batch = memory.sample(batch_size=batch_size)
 
         state_batch = torch.FloatTensor(state_batch).to(self.device)
         next_state_batch = torch.FloatTensor(next_state_batch).to(self.device)
-        action_batch = torch.FloatTensor(action_batch).to(self.device)
+        action_batch = ActionTensor(action_batch).to(self.device)
         reward_batch = torch.FloatTensor(reward_batch).to(self.device).unsqueeze(1)
         mask_batch = torch.FloatTensor(mask_batch).to(self.device).unsqueeze(1)
 
@@ -80,7 +95,11 @@ class SAC(object):
         qf1_pi, qf2_pi = self.critic(state_batch, pi)
         min_qf_pi = torch.min(qf1_pi, qf2_pi)
 
-        policy_loss = ((self.alpha * log_pi) - min_qf_pi).mean() # Jπ = 𝔼st∼D,εt∼N[α * logπ(f(εt;st)|st) − Q(st,f(εt;st))]
+        if self.discrete_action:
+            min_qf_pi = min_qf_pi.detach()
+            policy_loss = (log_pi*(0.5*self.alpha*log_pi + self.alpha - min_qf_pi)).mean()
+        else:
+            policy_loss = ((self.alpha * log_pi) - min_qf_pi).mean() # Jπ = 𝔼st∼D,εt∼N[α * logπ(f(εt;st)|st) − Q(st,f(εt;st))]
 
         self.critic_optim.zero_grad()
         qf1_loss.backward()

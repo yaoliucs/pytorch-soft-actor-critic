@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import Normal
+from torch.distributions import Normal, Categorical
 
 LOG_SIG_MAX = 2
 LOG_SIG_MIN = -20
@@ -19,14 +19,14 @@ class ValueNetwork(nn.Module):
         super(ValueNetwork, self).__init__()
 
         self.linear1 = nn.Linear(num_inputs, hidden_dim)
-        self.linear2 = nn.Linear(hidden_dim, hidden_dim)
+        #self.linear2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear3 = nn.Linear(hidden_dim, 1)
 
         self.apply(weights_init_)
 
     def forward(self, state):
         x = F.relu(self.linear1(state))
-        x = F.relu(self.linear2(x))
+        #x = F.relu(self.linear2(x))
         x = self.linear3(x)
         return x
 
@@ -37,26 +37,52 @@ class QNetwork(nn.Module):
 
         # Q1 architecture
         self.linear1 = nn.Linear(num_inputs + num_actions, hidden_dim)
-        self.linear2 = nn.Linear(hidden_dim, hidden_dim)
+        #self.linear2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear3 = nn.Linear(hidden_dim, 1)
 
         # Q2 architecture
         self.linear4 = nn.Linear(num_inputs + num_actions, hidden_dim)
-        self.linear5 = nn.Linear(hidden_dim, hidden_dim)
+        #self.linear5 = nn.Linear(hidden_dim, hidden_dim)
         self.linear6 = nn.Linear(hidden_dim, 1)
 
         self.apply(weights_init_)
 
     def forward(self, state, action):
-        xu = torch.cat([state, action], 1)
+        xu = torch.cat([state, action.float()], 1)
         
         x1 = F.relu(self.linear1(xu))
-        x1 = F.relu(self.linear2(x1))
+        #x1 = F.relu(self.linear2(x1))
         x1 = self.linear3(x1)
 
         x2 = F.relu(self.linear4(xu))
-        x2 = F.relu(self.linear5(x2))
+        #x2 = F.relu(self.linear5(x2))
         x2 = self.linear6(x2)
+
+        return x1, x2
+
+class QNetworkDA(nn.Module):
+    def __init__(self, num_inputs, num_actions, hidden_dim):
+        super(QNetworkDA, self).__init__()
+
+        # Q1 architecture
+        self.linear1 = nn.Linear(num_inputs, hidden_dim)
+        self.linear3 = nn.Linear(hidden_dim, num_actions)
+
+        # Q2 architecture
+        self.linear4 = nn.Linear(num_inputs, hidden_dim)
+        self.linear6 = nn.Linear(hidden_dim, num_actions)
+
+        self.apply(weights_init_)
+
+    def forward(self, state, action):
+
+        x1 = F.relu(self.linear1(state))
+        x1 = self.linear3(x1)
+        x1 = x1.gather(1, action)
+
+        x2 = F.relu(self.linear4(state))
+        x2 = self.linear6(x2)
+        x2 = x2.gather(1, action)
 
         return x1, x2
 
@@ -117,4 +143,29 @@ class DeterministicPolicy(nn.Module):
         noise = noise.clamp(-0.25, 0.25)
         action = mean + noise
         return action, torch.tensor(0.), mean
-    
+
+class SoftmaxPolicy(nn.Module):
+    def __init__(self, num_inputs, num_actions, hidden_dim):
+        super(SoftmaxPolicy, self).__init__()
+        
+        self.linear1 = nn.Linear(num_inputs, hidden_dim)
+        self.linear2 = nn.Linear(hidden_dim, hidden_dim)
+
+        self.out_linear = nn.Linear(hidden_dim, num_actions)
+        self.logsoftmax = nn.LogSoftmax()
+
+        self.apply(weights_init_)
+
+    def forward(self, state):
+        x = F.relu(self.linear1(state))
+        x = F.relu(self.linear2(x))
+        x = self.out_linear(x)
+        logprobs = self.logsoftmax(x)
+        return logprobs
+
+    def sample(self, state):
+        logprobs = self.forward(state)
+        probs = torch.exp(logprobs)
+        action = torch.multinomial(probs, 1, replacement=True)
+        log_prob = logprobs.gather(1, action)
+        return action, log_prob, torch.argmax(logprobs,dim=1,keepdim=True)
