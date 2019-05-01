@@ -54,8 +54,8 @@ parser.add_argument('--discrete_action', action="store_true",
                     help='Discrete action space')
 args = parser.parse_args()
 
-# python main.py --env-name CartPole-v0 --discrete_action --policy "Softmax" --automatic_entropy_tuning True --num_steps 15000 --batch_size 500 --hidden_size 32 --lr 0.001
-# python main.py --env-name CartPole-v0 --discrete_action --policy "Softmax" --automatic_entropy_tuning True --num_steps 110000 --batch_size 5000 --hidden_size 32 --lr 0.001 --start_steps 100000 --end_steps 100000 --replay_size 100000
+# python main.py --env-name CartPole-v0 --discrete_action --policy "Softmax" --automatic_entropy_tuning True --num_steps 20000 --batch_size 500 --hidden_size 32 --lr 0.0003 --cuda --seed=1
+# python main.py --env-name CartPole-v0 --discrete_action --policy "Softmax" --automatic_entropy_tuning True --num_steps 110000 --batch_size 5000 --hidden_size 32 --lr 0.001 --start_steps 100000 --end_steps 100000 --replay_size 100000 --seed=1
 
 for k, v in vars(args).items():
     print(' ' * 26 + k + ': ' + str(v))
@@ -65,7 +65,7 @@ for k, v in vars(args).items():
 # Another way to use it = actions * env.action_space.high[0] -> (https://github.com/sfujim/TD3). This does the same thing.
 # (or add env._max_episode_steps to normalized_actions.py)
 env = gym.make(args.env_name)
-env = FixHorizon(env,horizon=200)
+# env = FixHorizon(env,horizon=200)
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
 env.seed(args.seed)
@@ -77,7 +77,7 @@ eval_env.seed(args.seed)
 agent = SAC(env.observation_space.shape[0], env.action_space, args)
 
 #TesnorboardX
-writer = SummaryWriter(log_dir='runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
+writer = SummaryWriter(log_dir='runs_clean_data/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
                                                              args.policy, "autotune" if args.automatic_entropy_tuning else ""))
 result = []
 
