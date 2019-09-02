@@ -66,22 +66,30 @@ class QNetworkDA(nn.Module):
 
         # Q1 architecture
         self.linear1 = nn.Linear(num_inputs, hidden_dim)
-        self.linear3 = nn.Linear(hidden_dim, num_actions)
+        self.linear2 = nn.Linear(hidden_dim, hidden_dim)
+        self.linear3 = nn.Linear(hidden_dim, hidden_dim)
+        self.linear4 = nn.Linear(hidden_dim, num_actions)
 
         # Q2 architecture
-        self.linear4 = nn.Linear(num_inputs, hidden_dim)
-        self.linear6 = nn.Linear(hidden_dim, num_actions)
+        self.linear5 = nn.Linear(num_inputs, hidden_dim)
+        self.linear6 = nn.Linear(hidden_dim, hidden_dim)
+        self.linear7 = nn.Linear(hidden_dim, hidden_dim)
+        self.linear8 = nn.Linear(hidden_dim, num_actions)
 
         self.apply(weights_init_)
 
     def forward(self, state, action):
 
         x1 = F.relu(self.linear1(state))
-        x1 = self.linear3(x1)
+        x1 = F.relu(self.linear2(x1))
+        x1 = F.relu(self.linear3(x1))
+        x1 = self.linear4(x1)
         x1 = x1.gather(1, action)
 
-        x2 = F.relu(self.linear4(state))
-        x2 = self.linear6(x2)
+        x2 = F.relu(self.linear5(state))
+        x2 = F.relu(self.linear6(x2))
+        x2 = F.relu(self.linear7(x2))
+        x2 = self.linear8(x2)
         x2 = x2.gather(1, action)
 
         return x1, x2
@@ -119,6 +127,7 @@ class GaussianPolicy(nn.Module):
         log_prob = log_prob.sum(1, keepdim=True)
         return action, log_prob, torch.tanh(mean)
 
+
 class DeterministicPolicy(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_dim):
         super(DeterministicPolicy, self).__init__()
@@ -144,12 +153,14 @@ class DeterministicPolicy(nn.Module):
         action = mean + noise
         return action, torch.tensor(0.), mean
 
+
 class SoftmaxPolicy(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_dim):
         super(SoftmaxPolicy, self).__init__()
         
         self.linear1 = nn.Linear(num_inputs, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
+        self.linear3 = nn.Linear(hidden_dim, hidden_dim)
 
         self.out_linear = nn.Linear(hidden_dim, num_actions)
         self.logsoftmax = nn.LogSoftmax()
@@ -159,6 +170,7 @@ class SoftmaxPolicy(nn.Module):
     def forward(self, state):
         x = F.relu(self.linear1(state))
         x = F.relu(self.linear2(x))
+        x = F.relu(self.linear3(x))
         x = self.out_linear(x)
         logprobs = self.logsoftmax(x)
         return logprobs

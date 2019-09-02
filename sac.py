@@ -5,7 +5,7 @@ from gym.spaces import Box, Discrete
 from torch.optim import Adam
 from utils import soft_update, hard_update
 from model import GaussianPolicy, QNetwork, QNetworkDA, DeterministicPolicy, SoftmaxPolicy
-
+from collections import OrderedDict
 
 class SAC(object):
     def __init__(self, num_inputs, action_space, args):
@@ -49,6 +49,7 @@ class SAC(object):
 
             self.policy = SoftmaxPolicy(num_inputs, action_space.n, args.hidden_size).to(self.device)
             self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
+            self.demon_policy = SoftmaxPolicy(num_inputs, action_space.n, args.hidden_size).to(self.device)
         else:
             self.alpha = 0
             self.automatic_entropy_tuning = False
@@ -56,11 +57,13 @@ class SAC(object):
             self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
 
 
-
-    def select_action(self, state, eval=False):
+    def select_action(self, state, eval=False, demon=False):
         state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
         if eval == False:
-            action, _, _ = self.policy.sample(state)
+            if demon:
+                action, _, _ = self.demon_policy.sample(state)
+            else:
+                action, _, _ = self.policy.sample(state)
         else:
             _, _, action = self.policy.sample(state)
         action = action.detach().cpu().numpy()
@@ -152,4 +155,17 @@ class SAC(object):
             self.policy.load_state_dict(torch.load(actor_path))
         if critic_path is not None:
             self.critic.load_state_dict(torch.load(critic_path))
+
+    def load_athens_model(self, model_path):
+        sd = torch.load(model_path)
+        nsd = OrderedDict()
+        nsd['linear1.weight'] = sd['base.mlp.0.weight']
+        nsd['linear1.bias'] = sd['base.mlp.0.bias']
+        nsd['linear2.weight'] = sd['base.mlp.2.weight']
+        nsd['linear2.bias'] = sd['base.mlp.2.bias']
+        nsd['linear3.weight'] = sd['base.mlp.4.weight']
+        nsd['linear3.bias'] = sd['base.mlp.4.bias']
+        nsd['out_linear.weight'] = sd['output_model.0.weight']
+        nsd['out_linear.bias'] = sd['output_model.0.bias']
+        self.demon_policy.load_state_dict(nsd)
 
