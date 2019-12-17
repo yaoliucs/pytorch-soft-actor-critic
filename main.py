@@ -4,7 +4,6 @@ import gym
 import numpy as np
 import itertools
 import torch
-import hiv
 import cartpole_continuous
 from sac import SAC
 from tensorboardX import SummaryWriter
@@ -23,8 +22,6 @@ parser.add_argument('--n_eval', type=int, default=10,
                     help='Number of episodes used to evaluate policy (default:10)')
 parser.add_argument('--gamma', type=float, default=0.99, metavar='G',
                     help='discount factor for reward (default: 0.99)')
-parser.add_argument('--eval_gamma', type=float, default=1.0,
-                    help='discount factor for evaluation (default: 1.0)')
 parser.add_argument('--tau', type=float, default=0.005, metavar='G',
                     help='target smoothing coefficient(τ) (default: 0.005)')
 parser.add_argument('--lr', type=float, default=0.0003, metavar='G',
@@ -58,7 +55,7 @@ parser.add_argument('--discrete_action', action="store_true",
 args = parser.parse_args()
 
 # python main.py --env-name CartPole-v0 --discrete_action --policy "Softmax" --automatic_entropy_tuning True --num_steps 20000 --batch_size 500 --hidden_size 32 --lr 0.0003 --cuda --seed=1
-# python main.py --env-name HIVTreatment-v0 --discrete_action --policy "Softmax" --automatic_entropy_tuning True --num_steps 205000 --batch_size 5000 --hidden_size 16 --lr 0.000005 --start_steps 200000 --end_steps 200000 --replay_size 100000 --eval_gamma 0.98 --seed=1
+# python main.py --env-name CartPole-v0 --discrete_action --policy "Softmax" --automatic_entropy_tuning True --num_steps 110000 --batch_size 5000 --hidden_size 32 --lr 0.001 --start_steps 100000 --end_steps 100000 --replay_size 100000 --seed=1
 
 for k, v in vars(args).items():
     print(' ' * 26 + k + ': ' + str(v))
@@ -91,8 +88,6 @@ memory = ReplayMemory(args.replay_size)
 total_numsteps = 0
 updates = 0
 
-agent.load_athens_model(model_path="runs/hiv_model.pth")
-
 for i_episode in itertools.count(1):
     episode_reward = 0
     episode_steps = 0
@@ -101,11 +96,7 @@ for i_episode in itertools.count(1):
 
     while not done:
         if args.start_steps > total_numsteps:
-            pib_eps = 0.3
-            if np.random.random() < pib_eps:
-                action = env.action_space.sample()  # Sample random action
-            else:
-                action = agent.select_action(state, demon=True)
+            action = env.action_space.sample()  # Sample random action
         else:
             action = agent.select_action(state)  # Sample action from policy
 
@@ -137,19 +128,16 @@ for i_episode in itertools.count(1):
         state = next_state
 
         if total_numsteps >= args.start_steps and total_numsteps % 100 == 0 and args.eval == True:
-        #if total_numsteps % 100 == 0 and args.eval == True:
             eval_rewards = []
             for i in range(args.n_eval):
                 eval_state = eval_env.reset()
                 eval_episode_reward = 0
                 eval_done = False
-                gamma_t = 1.0
                 while not eval_done:
                     eval_action = agent.select_action(eval_state, eval=False)
 
                     eval_next_state, eval_reward, eval_done, _ = eval_env.step(eval_action)
-                    eval_episode_reward += gamma_t * eval_reward
-                    gamma_t *= args.eval_gamma
+                    eval_episode_reward += eval_reward
 
                     eval_state = eval_next_state
                 eval_rewards.append(eval_episode_reward)
